@@ -16,84 +16,56 @@
 
 #include <inttypes.h>
 #include <string.h>
+#include <stdio.h>
 #include "Arduino.h"
 #include "Print.h"
 
-#include <ESP8266WiFi.h>
-#include "ModbusSlaveTCP.h"
+#include <esp_log.h>
+#include <ETH.h>
+#include <AsyncTCP.h>
+#include "ModbusSlaveAsyncTCP.h"
 
 #define MLEN 6
 
 /**
  * Create a server that listen to port 502
  */
-WiFiServer server(502);
-WiFiClient client;
+AsyncServer server(502);
 
 /**
  * Init the modbus object.
  *
  * @param unitID the modbus slave id.
  */
-ModbusTCP::ModbusTCP(uint8_t _unitID) {
-    // set modbus slave unit id
-    unitID = _unitID;
+ModbusAsyncTCP::ModbusAsyncTCP(uint8_t _unitID) {
+  // set modbus slave unit id
+  unitID = _unitID;
+  server.onClient([](void *s, AsyncClient* c){
+    ModbusAsyncTCP *mb = (ModbusAsyncTCP*)s;
+	if(c == NULL)
+      return;
+    c->setRxTimeout(3);
+    
+	c->onData([](void *r, AsyncClient* c, void *buf, size_t len){ 
+	  ModbusAsyncTCP *mb = (ModbusAsyncTCP*)r;
+      char *str = (char*)buf;
+      mb->parse(str,len,c);	
+	}, mb);
+  }, this);
 }
 
-/**
- * Begin server.
- */
-void ModbusTCP::begin() {
-    server.begin();
-}
-
-/**
- * wait for end of frame, parse request and answer it.
- */
-int ModbusTCP::poll() {
-    size_t lengthIn;
+int ModbusAsyncTCP::parse(char *buf,size_t len,AsyncClient *client){
+	size_t lengthIn = len;
     size_t lengthOut;
     uint16_t crc;
     uint16_t address;
     uint16_t length;
     uint16_t status;
     uint8_t fc;
-    
-    /**
-     * Check if there is new clients
-     */
-    if (server.hasClient()){
-        // if client is free - connect
-        if (!client || !client.connected()){
-            if(client) client.stop();
-            client = server.available();
-            
-        // client is not free - reject
-        } else {
-            WiFiClient serverClient = server.available();
-            serverClient.stop();
-        }
-    }
-    
-    /**
-     * Read one data frame:
-     */
-     
-    // if we have data in buffer
-    // read until end of data.
-    if (client && client.connected() && client.available()) {
-        lengthIn = 0;
-        
-        //get data from the telnet client and push it to the UART
-        while(client.available() && lengthIn < MAX_BUFFER) {
-            bufIn[lengthIn] = client.read();
-            lengthIn++;
-        }
-    } else {
-        return 0;
-    }
-    
-    /**
+	
+	memcpy(bufIn,buf,len);
+	
+	/**
      * Validate buffer.
      */
     // check minimum length.
@@ -193,7 +165,7 @@ int ModbusTCP::poll() {
             return 0;
             break;
     }
-    
+	
     /**
      * Build answer
      */
@@ -210,12 +182,38 @@ int ModbusTCP::poll() {
     /**
      * Transmit
      */
-    if (client && client.connected()) {
-        client.write((uint8_t*)bufOut, lengthOut);
-        delay(1);
+    if (client && client->connected()) {
+        client->add((char*)bufOut, lengthOut);
+
+		while(!client->canSend()){
+			delay(1);
+		}
+        client->send();
     }
     
     return lengthOut;
+}
+
+/**
+ * Begin server.
+ */
+void ModbusAsyncTCP::begin() {
+  server.begin();
+}
+
+/**
+ * wait for end of frame, parse request and answer it.
+ */
+int ModbusAsyncTCP::poll() {
+    size_t lengthIn;
+    size_t lengthOut;
+    uint16_t crc;
+    uint16_t address;
+    uint16_t length;
+    uint16_t status;
+    uint8_t fc;
+    
+    
 }
 
 /**
@@ -224,7 +222,7 @@ int ModbusTCP::poll() {
  * @param offset the register offset from first register in this buffer.
  * @return the reguster value from buffer.
  */
-uint16_t ModbusTCP::readRegisterFromBuffer(int offset) {
+uint16_t ModbusAsyncTCP::readRegisterFromBuffer(int offset) {
     int address = MLEN + 7 + offset * 2;
     
     return word(bufIn[address], bufIn[address + 1]);
@@ -236,7 +234,7 @@ uint16_t ModbusTCP::readRegisterFromBuffer(int offset) {
  * @param offset the coil offset from first coil in this buffer.
  * @param state the coil state to write into buffer (true / false)
  */
-void ModbusTCP::writeCoilToBuffer(int offset, uint16_t state) {
+void ModbusAsyncTCP::writeCoilToBuffer(int offset, uint16_t state) {
     int address = MLEN + 3 + offset / 8;
     int bit = offset % 8;
     
@@ -253,7 +251,7 @@ void ModbusTCP::writeCoilToBuffer(int offset, uint16_t state) {
  * @param offset the register offset from first register in this buffer.
  * @param value the register value to write into buffer.
  */
-void ModbusTCP::writeRegisterToBuffer(int offset, uint16_t value) {
+void ModbusAsyncTCP::writeRegisterToBuffer(int offset, uint16_t value) {
     int address = MLEN + 3 + offset * 2;
     
     bufOut[address] = value >> 8;
@@ -267,7 +265,7 @@ void ModbusTCP::writeRegisterToBuffer(int offset, uint16_t value) {
  * @param str the string to write into buffer.
  * @param length the string length.
  */
-void ModbusTCP::writeStringToBuffer(int offset, uint8_t *str, uint8_t length) {
+void ModbusAsyncTCP::writeStringToBuffer(int offset, uint8_t *str, uint8_t length) {
     int address = MLEN + 3 + offset * 2;
     
     // check string length.

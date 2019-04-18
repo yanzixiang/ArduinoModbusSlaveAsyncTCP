@@ -15,6 +15,7 @@
  */
 
 #include <inttypes.h>
+#include <AsyncTCP.h>
 
 #define MAX_BUFFER 64
 
@@ -47,9 +48,9 @@ typedef void(*CallBackFunc)(uint8_t, uint16_t, uint16_t);
 /**
  * @class Modbus 
  */
-class ModbusTCP {
+class ModbusAsyncTCP {
 public:
-    ModbusTCP(uint8_t unitID);
+    ModbusAsyncTCP(uint8_t unitID);
     void begin();
     int poll();
     uint16_t readRegisterFromBuffer(int offset);
@@ -58,9 +59,13 @@ public:
     void writeStringToBuffer(int offset, uint8_t *str, uint8_t length);
     
     CallBackFunc cbVector[4];
+	
+	
+	
 private:
     uint8_t unitID;
     uint8_t bufIn[MAX_BUFFER];
     uint8_t bufOut[MAX_BUFFER];
+	int parse(char*, size_t, AsyncClient*);
 };
 
