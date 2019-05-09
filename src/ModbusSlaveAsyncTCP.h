@@ -16,34 +16,9 @@
 
 #include <inttypes.h>
 #include <AsyncTCP.h>
+#include "ModbusSlaveDefs.h"
 
 #define MAX_BUFFER 64
-
-/**
- * Modbus function codes
- */
-enum {
-  FC_READ_COILS = 1,
-  FC_READ_DISCRETE_INPUT = 2,
-  FC_READ_HOLDING_REGISTERS = 3,
-  FC_READ_INPUT_REGISTERS = 4,
-  FC_WRITE_COIL = 5,
-  FC_WRITE_MULTIPLE_REGISTERS = 16
-};
-
-enum {
-  CB_READ_COILS = 0,
-  CB_READ_REGISTERS,
-  CB_WRITE_COIL,
-  CB_WRITE_MULTIPLE_REGISTERS
-};
-
-enum {
-  COIL_OFF = 0x0000,
-  COIL_ON = 0xff00
-};
-
-typedef void(*CallBackFunc)(uint8_t, uint16_t, uint16_t);
 
 /**
  * @class Modbus 
@@ -52,18 +27,20 @@ class ModbusAsyncTCP {
 public:
     ModbusAsyncTCP(uint8_t unitID);
     void begin();
-    int poll();
     uint16_t readRegisterFromBuffer(int offset);
     void writeCoilToBuffer(int offset, uint16_t state);
     void writeRegisterToBuffer(int offset, uint16_t value);
     void writeStringToBuffer(int offset, uint8_t *str, uint8_t length);
+	
+	void EnableSlaveIDCheck();
+	void DisableSlaveIDCheck();
+	bool CheckSlaveIDEnabled();
     
     CallBackFunc cbVector[4];
-	
-	
-	
+		
 private:
     uint8_t unitID;
+	bool checkSlaveID;
     uint8_t bufIn[MAX_BUFFER];
     uint8_t bufOut[MAX_BUFFER];
 	int parse(char*, size_t, AsyncClient*);
